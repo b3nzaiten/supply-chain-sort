@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supply Chain Sort</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #FBF3E2;
+    --ink: #111111;
+    --ink-soft: #4A4438;
+    --muted: #E6DCC6;
+
+    --goods: #FF8A3A;    /* warm orange: the tangible bat */
+    --services: #25C7E8; /* cyan: the hotel experience */
+    --warn: #FF3D7F;     /* wrong placement, always hatched */
+    --signal: #FFD23F;   /* highlight: selected card, correct sticker */
+    --new: #A78BFA;
+
+    --shadow: 6px 6px 0 var(--ink);
+    --card-radius: 14px;
+    --font-display: "Archivo", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-display); font-size: 17px; line-height: 1.4;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 80px; }
+
+  .eyebrow { font-family: var(--font-mono); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  .tag { display: inline-block; background: var(--ink); color: var(--paper); padding: 3px 10px; }
+  h1 { font-size: clamp(34px, 6vw, 60px); font-weight: 900; font-stretch: 115%; line-height: 1; margin: 14px 0 12px; letter-spacing: -.01em; }
+  .lede { max-width: 66ch; font-size: 18px; color: var(--ink-soft); margin: 0 0 6px; }
+  .lede b { color: var(--ink); }
+  .box { border: 3px solid var(--ink); box-shadow: var(--shadow); }
+
+  button {
+    font: 700 15px var(--font-mono); background: #fff; color: var(--ink);
+    border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
+    padding: 10px 16px; cursor: pointer; transition: transform .12s, box-shadow .12s;
+  }
+  button:active:not(:disabled) { transform: translate(4px,4px); box-shadow: 0 0 0 var(--ink); }
+  button.primary { background: var(--signal); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible, .card:focus-visible, .slot:focus-visible { outline: 4px solid var(--new); outline-offset: 3px; }
+
+  /* Name + directions */
+  .intro { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: end; margin: 24px 0 28px; }
+  @media (max-width: 720px) { .intro { grid-template-columns: 1fr; } }
+  .steps { margin: 0; padding: 14px 18px; background: #fff; list-style: none; counter-reset: s; }
+  .steps li { counter-increment: s; padding-left: 34px; position: relative; margin: 4px 0; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; background: var(--ink); color: var(--paper); font: 700 13px/24px var(--font-mono); text-align: center; }
+
+  /* Board */
+  .board { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; }
+  .board th, .board td { border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); padding: 10px; vertical-align: middle; }
+  .board tr > *:last-child { border-right: 0; }
+  .board tbody tr:last-child > * { border-bottom: 0; }
+  .board thead th { text-align: left; padding: 12px 14px; }
+  .board thead .col-h { display: flex; align-items: center; gap: 12px; font-weight: 900; font-stretch: 110%; font-size: 22px; line-height: 1.05; }
+  .board thead .col-h svg { width: 46px; height: 46px; flex: none; }
+  .board thead .col-h small { display: block; font: 700 13px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; margin-top: 3px; }
+  .board th.goods { background: var(--goods); }
+  .board th.services { background: var(--services); }
+  .board th.step-h { background: var(--ink); color: var(--paper); width: 20%; }
+  .board tbody th { text-align: left; font-weight: 850; font-size: 18px; background: var(--muted); width: 20%; }
+  .board td.goods { background: #FFE6D3; }
+  .board td.services { background: #D5F3FA; }
+
+  .slot {
+    min-height: 92px; border: 3px dashed var(--ink); border-radius: var(--card-radius);
+    display: flex; align-items: stretch; justify-content: stretch; cursor: pointer;
+    background: rgba(255,255,255,.45); transition: background .15s;
+  }
+  .slot.empty::before { content: "Drop or tap here"; margin: auto; font: 500 13px var(--font-mono); color: var(--ink-soft); }
+  .slot.over, .selecting .slot.empty:hover { background: var(--signal); }
+  .slot.filled { border-style: solid; border-color: transparent; background: transparent; }
+
+  /* Cards */
+  .tray-wrap { margin-top: 30px; }
+  .tray-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tray-head h2 { margin: 0; font-size: 24px; font-weight: 900; font-stretch: 110%; }
+  .tray {
+    min-height: 120px; padding: 18px; background: var(--muted);
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px;
+  }
+  .tray.over { background: var(--signal); }
+  .tray .done-msg { grid-column: 1 / -1; margin: auto; font: 700 15px var(--font-mono); color: var(--ink-soft); }
+
+  .card {
+    position: relative; width: 100%; background: #fff; border: 3px solid var(--ink);
+    border-radius: var(--card-radius); box-shadow: 5px 5px 0 var(--ink);
+    padding: 12px 14px; font-weight: 800; font-size: 17px; line-height: 1.2;
+    cursor: grab; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+    display: flex; align-items: center; min-height: 86px;
+    transition: transform .2s cubic-bezier(.3,1.4,.6,1), box-shadow .2s;
+  }
+  .card:hover { transform: translate(-2px,-2px); box-shadow: 7px 7px 0 var(--ink); }
+  .card.selected { background: var(--signal); transform: translate(3px,3px) rotate(-1.5deg); box-shadow: 2px 2px 0 var(--ink); }
+  .card.dragging { opacity: .4; }
+  .slot .card { box-shadow: 3px 3px 0 var(--ink); }
+
+  .card.right { cursor: default; }
+  .card.right::after, .card.wrong::after {
+    position: absolute; top: -14px; right: -10px; font: 700 13px var(--font-mono);
+    border: 3px solid var(--ink); padding: 2px 8px; transform: rotate(6deg);
+  }
+  .card.right::after { content: "✓ RIGHT"; background: var(--signal); }
+  .card.wrong { background: repeating-linear-gradient(-45deg, #FFC2D6 0 12px, #fff 12px 24px); }
+  .card.wrong::after { content: "✕ MOVE ME"; background: var(--warn); }
+
+  /* Score bar */
+  .actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 26px; }
+  .status { font: 700 15px var(--font-mono); }
+  .scoreline { display: none; align-items: center; gap: 14px; margin-top: 18px; padding: 14px 18px; background: #fff; flex-wrap: wrap; }
+  .scoreline.show { display: flex; }
+  .scoreline .big { font-weight: 900; font-stretch: 125%; font-size: 48px; line-height: 1; font-variant-numeric: tabular-nums; }
+
+  /* Completion */
+  .done { display: none; margin-top: 34px; background: #fff; padding: 26px; position: relative; }
+  .done.show { display: block; animation: pop .4s cubic-bezier(.3,1.4,.6,1); }
+  @keyframes pop { from { transform: translate(8px,8px); box-shadow: 0 0 0 var(--ink); } }
+  .done .sticker { position: absolute; top: -20px; right: 18px; background: var(--signal); border: 3px solid var(--ink); font: 700 15px var(--font-mono); padding: 4px 12px; transform: rotate(5deg); }
+  .done h2 { margin: 0 0 10px; font-size: clamp(28px, 4vw, 40px); font-weight: 900; font-stretch: 115%; line-height: 1; }
+  .done dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 18px 0; }
+  .done dl div { border: 3px solid var(--ink); padding: 10px 12px; background: var(--paper); }
+  .done dt { font: 700 12px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+  .done dd { margin: 4px 0 0; font-weight: 900; font-size: 26px; font-variant-numeric: tabular-nums; word-break: break-word; }
+  .done p { margin: 0; color: var(--ink-soft); max-width: 66ch; }
+
+  /* Phone: stack each step as its own block */
+  @media (max-width: 640px) {
+    .board, .board tbody, .board tr, .board th, .board td { display: block; width: 100% !important; }
+    .board thead { display: none; }
+    .board tbody tr { border-bottom: 3px solid var(--ink); }
+    .board tbody tr:last-child { border-bottom: 0; }
+    .board th, .board td { border-right: 0; border-bottom: 0; }
+    .board td::before { display: block; font: 700 12px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+    .board td.goods::before { content: "Goods · baseball bat"; }
+    .board td.services::before { content: "Services · hotel"; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-bat" viewBox="0 0 100 100"><g transform="rotate(-45 50 50)" stroke="#111" stroke-width="5" stroke-linejoin="round"><path d="M44 4 h12 l4 54 q0 4 -4 6 l-1 26 h-10 l-1 -26 q-4 -2 -4 -6 z" fill="#F3D9A9"/><rect x="42" y="88" width="16" height="7" rx="2" fill="#111"/></g></symbol>
+  <symbol id="i-hotel" viewBox="0 0 100 100"><rect x="18" y="14" width="64" height="76" fill="#fff" stroke="#111" stroke-width="5"/><path d="M8 90 h84" stroke="#111" stroke-width="6"/><g fill="#111"><rect x="28" y="24" width="12" height="10"/><rect x="60" y="24" width="12" height="10"/><rect x="28" y="42" width="12" height="10"/><rect x="60" y="42" width="12" height="10"/></g><rect x="40" y="64" width="20" height="26" fill="#FFD23F" stroke="#111" stroke-width="5"/></symbol>
+</svg>
+
+<main>
+  <span class="eyebrow tag">Task 6 · From Raw to Customer Ready</span>
+  <h1>Goods vs. Services Supply Chain Sort</h1>
+  <p class="lede"><b>Driving question:</b> What decisions go into getting a product from an idea to a customer, and how can these choices impact a business's success?</p>
+
+  <div class="intro">
+    <ol class="steps box">
+      <li>Every card describes one step of a supply chain, for either a <b>baseball bat</b> (a good) or a <b>hotel</b> (a service).</li>
+      <li>Drag each card into the right row and column. On a tablet or phone, tap a card, then tap a box.</li>
+      <li>Once all 10 are placed, press <b>Check my sort</b>. Fix any cards marked "Move me" and check again.</li>
+    </ol>
+  </div>
+
+  <table class="board box" id="board">
+    <thead>
+      <tr>
+        <th class="step-h"><span class="eyebrow">Supply chain step</span></th>
+        <th class="goods"><div class="col-h"><svg><use href="#i-bat"/></svg><div>Goods supply chain<small>Baseball bat</small></div></div></th>
+        <th class="services"><div class="col-h"><svg><use href="#i-hotel"/></svg><div>Services supply chain<small>Hotel</small></div></div></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div class="actions">
+    <button class="primary" id="check" disabled>Check my sort</button>
+    <button id="reset">Start over</button>
+    <span class="status" id="status" aria-live="polite"></span>
+  </div>
+  <div class="scoreline box" id="scoreline" aria-live="polite">
+    <span class="big" id="score">0/10</span>
+    <span id="scoremsg"></span>
+  </div>
+
+  <section class="tray-wrap">
+    <div class="tray-head"><h2>Cards to sort</h2><span class="eyebrow" id="left">10 left</span></div>
+    <div class="tray box" id="tray"></div>
+  </section>
+
+  <section class="done box" id="done" aria-live="polite">
+    <span class="sticker">ALL 10 SORTED</span>
+    <h2>Supply chain sorted.</h2>
+    <dl>
+      <div><dt>First-try score</dt><dd id="d-first">—</dd></div>
+      <div><dt>Checks used</dt><dd id="d-tries">—</dd></div>
+    </dl>
+    <p>Think about this: which row shows the biggest difference between making a good and delivering a service?</p>
+  </section>
+</main>
+
+<script>
+const STEPS = ["Core input", "Production / preparation", "Storage / inventory", "Delivery", "Output"];
+const CARDS = [
+  { id: "g0", text: "Hardwood, varnish, labor" },
+  { id: "s0", text: "Employees, training, facility" },
+  { id: "g1", text: "Manufacturing (wood → bat)" },
+  { id: "s1", text: "Service performance (staff → guest experience)" },
+  { id: "g2", text: "Warehouse and distribution" },
+  { id: "s2", text: "Reservation system (capacity management)" },
+  { id: "g3", text: "Physical bat to store or customer" },
+  { id: "s3", text: "Guest interaction (in-person or virtual)" },
+  { id: "g4", text: "Tangible product" },
+  { id: "s4", text: "Intangible experience" },
+];
+// Slot ids match card ids: slot "g2" is the goods column, storage row.
+
+const $ = s => document.querySelector(s);
+const rowsEl = $("#rows"), trayEl = $("#tray");
+let place = {};        // slotId -> cardId
+let locked = new Set(); // cards confirmed correct
+let selected = null, tries = 0, firstScore = null, order = [];
+
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+function buildBoard() {
+  rowsEl.innerHTML = STEPS.map((s, i) => `
+    <tr><th scope="row">${s}</th>
+      <td class="goods"><div class="slot" data-slot="g${i}" tabindex="0" role="button" aria-label="Goods, ${s}"></div></td>
+      <td class="services"><div class="slot" data-slot="s${i}" tabindex="0" role="button" aria-label="Services, ${s}"></div></td>
+    </tr>`).join("");
+  rowsEl.querySelectorAll(".slot").forEach(wireDrop);
+  wireDrop(trayEl);
+}
+
+function cardEl(c) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.textContent = c.text;
+  el.dataset.card = c.id;
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  if (locked.has(c.id)) { el.classList.add("right"); el.setAttribute("aria-disabled", "true"); return el; }
+  el.draggable = true;
+  el.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", c.id); el.classList.add("dragging"); select(null); });
+  el.addEventListener("dragend", () => el.classList.remove("dragging"));
+  el.addEventListener("click", e => {
+    e.stopPropagation();
+    const slot = slotOf(c.id);
+    // Tapping a placed card while another is selected swaps them.
+    if (selected && selected !== c.id && slot) return move(selected, slot);
+    select(selected === c.id ? null : c.id);
+  });
+  el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); } });
+  return el;
+}
+
+function wireDrop(target) {
+  target.addEventListener("dragover", e => { e.preventDefault(); target.classList.add("over"); });
+  target.addEventListener("dragleave", () => target.classList.remove("over"));
+  target.addEventListener("drop", e => {
+    e.preventDefault(); target.classList.remove("over");
+    move(e.dataTransfer.getData("text/plain"), target.dataset.slot || null);
+  });
+  target.addEventListener("click", () => { if (selected) move(selected, target.dataset.slot || null); });
+  target.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target === target) { e.preventDefault(); target.click(); } });
+}
+
+function select(id) {
+  selected = id;
+  document.body.classList.toggle("selecting", !!id);
+  document.querySelectorAll(".card").forEach(el => el.classList.toggle("selected", el.dataset.card === id));
+}
+
+function slotOf(cardId) { return Object.keys(place).find(k => place[k] === cardId) || null; }
+
+// Move a card to a slot (or to the tray when slot is null). A card already in the slot swaps back.
+function move(cardId, slot) {
+  if (!cardId || locked.has(cardId)) return;
+  const from = slotOf(cardId);
+  if (slot && locked.has(place[slot])) return;
+  if (from) delete place[from];
+  if (slot) {
+    const bumped = place[slot];
+    if (bumped && from) place[from] = bumped;
+    place[slot] = cardId;
+  }
+  marks.delete(cardId);
+  if (slot && place[from]) marks.delete(place[from]);
+  select(null);
+  render();
+}
+
+let marks = new Map(); // cardId -> "wrong" after a check
+
+function render() {
+  document.querySelectorAll(".slot").forEach(s => {
+    const id = place[s.dataset.slot];
+    s.innerHTML = "";
+    s.classList.toggle("filled", !!id);
+    s.classList.toggle("empty", !id);
+    if (id) {
+      const el = cardEl(CARDS.find(c => c.id === id));
+      if (marks.get(id) === "wrong") el.classList.add("wrong");
+      s.appendChild(el);
+    }
+  });
+  trayEl.innerHTML = "";
+  const inTray = order.filter(id => !slotOf(id));
+  inTray.forEach(id => trayEl.appendChild(cardEl(CARDS.find(c => c.id === id))));
+  if (!inTray.length) trayEl.innerHTML = `<span class="done-msg">All cards placed. Press "Check my sort".</span>`;
+  $("#left").textContent = `${inTray.length} left`;
+  const allPlaced = Object.keys(place).length === CARDS.length;
+  const allRight = locked.size === CARDS.length;
+  $("#check").disabled = !allPlaced || allRight;
+  $("#status").textContent = allRight ? "" : allPlaced ? "Ready to check." : "";
+}
+
+function check() {
+  tries++;
+  let right = 0;
+  for (const [slot, id] of Object.entries(place)) {
+    if (slot === id) { right++; locked.add(id); marks.delete(id); }
+    else marks.set(id, "wrong");
+  }
+  if (firstScore === null) firstScore = right;
+  $("#score").textContent = `${right}/10`;
+  $("#scoremsg").textContent = right === 10
+    ? "Every card is in the right place."
+    : `${10 - right} card${10 - right === 1 ? " is" : "s are"} in the wrong spot. Move the striped cards and check again.`;
+  $("#scoreline").classList.add("show");
+  render();
+  if (right === 10) finish();
+}
+
+function finish() {
+  $("#d-first").textContent = `${firstScore}/10`;
+  $("#d-tries").textContent = tries;
+  $("#done").classList.add("show");
+  $("#done").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function reset() {
+  place = {}; locked = new Set(); marks = new Map();
+  tries = 0; firstScore = null; order = shuffle(CARDS.map(c => c.id));
+  $("#scoreline").classList.remove("show");
+  $("#done").classList.remove("show");
+  select(null); render();
+}
+
+$("#check").addEventListener("click", check);
+$("#reset").addEventListener("click", () => { if (!Object.keys(place).length || confirm("Clear the board and start over?")) reset(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") select(null); });
+
+buildBoard();
+reset();
+</script>
+</body>
+</html>
